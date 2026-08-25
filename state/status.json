@@ -1,10 +1,10 @@
 {
-  "scan_started_at": "2026-08-25T08:08:43.298090+00:00",
+  "scan_started_at": "2026-08-25T09:59:30.276176+00:00",
   "mode": "PAPER",
   "live_trading_enabled": false,
   "audit_chain": {
     "ok": true,
-    "records": 10,
+    "records": 13,
     "broken_at": null,
     "detail": "chain intact"
   },
@@ -14,18 +14,18 @@
   "evaluation": {
     "started": true,
     "expired": false,
-    "elapsed_hours": 6.3079,
-    "remaining_hours": 41.6921,
+    "elapsed_hours": 8.1542,
+    "remaining_hours": 39.8458,
     "start": "2026-08-25T01:50:15.000452+00:00",
     "end": "2026-08-27T01:50:15.000452+00:00",
     "complete": false,
-    "runs_observed": 4
+    "runs_observed": 5
   },
   "marks_verified": true,
   "settlement_alerts": [],
   "settlement_pending": [],
   "discovery": {
-    "weather_markets_found": 30,
+    "weather_markets_found": 60,
     "other_markets_found": 0,
     "weather_discovery_complete": true,
     "weather_sources": [
@@ -55,40 +55,40 @@
         "exhausted": true,
         "source": "GET /v1/markets?tagIds=38",
         "error": "",
-        "market_count": 30
+        "market_count": 60
       },
       {
         "pages_fetched": 1,
         "exhausted": true,
         "source": "GET /v1/search?query=temperature",
         "error": "",
-        "market_count": 30
+        "market_count": 60
       },
       {
         "pages_fetched": 1,
         "exhausted": true,
         "source": "GET /v1/search?query=high temperature",
         "error": "",
-        "market_count": 30
+        "market_count": 60
       },
       {
         "pages_fetched": 1,
         "exhausted": true,
         "source": "GET /v1/search?query=weather",
         "error": "",
-        "market_count": 30
+        "market_count": 60
       }
     ],
     "broad_scan": null
   },
   "scan_scope": "WEATHER_ONLY",
-  "scan_finished_at": "2026-08-25T08:08:45.122251+00:00",
-  "markets_scanned": 30,
-  "weather_markets_discovered": 30,
+  "scan_finished_at": "2026-08-25T09:59:30.939377+00:00",
+  "markets_scanned": 60,
+  "weather_markets_discovered": 60,
   "weather_discovery_complete": true,
   "broad_scan_exhausted": null,
   "broad_scan_enabled": false,
-  "opportunities_considered": 30,
+  "opportunities_considered": 60,
   "traded_this_scan": 0,
   "shortlisted_for_review": 0,
   "consecutive_errors": 0,
@@ -101,5 +101,5 @@
   "open_positions": 0,
   "halted": false,
   "halt_reason": "",
-  "last_successful_scan": "2026-08-25T08:08:45.122279+00:00"
+  "last_successful_scan": "2026-08-25T09:59:30.939409+00:00"
 }
