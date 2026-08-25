@@ -1,10 +1,10 @@
 {
-  "scan_started_at": "2026-08-25T14:30:20.510683+00:00",
+  "scan_started_at": "2026-08-25T16:20:14.018459+00:00",
   "mode": "PAPER",
   "live_trading_enabled": false,
   "audit_chain": {
     "ok": true,
-    "records": 22,
+    "records": 25,
     "broken_at": null,
     "detail": "chain intact"
   },
@@ -14,12 +14,12 @@
   "evaluation": {
     "started": true,
     "expired": false,
-    "elapsed_hours": 12.6682,
-    "remaining_hours": 35.3318,
+    "elapsed_hours": 14.4997,
+    "remaining_hours": 33.5003,
     "start": "2026-08-25T01:50:15.000452+00:00",
     "end": "2026-08-27T01:50:15.000452+00:00",
     "complete": false,
-    "runs_observed": 8
+    "runs_observed": 9
   },
   "marks_verified": true,
   "settlement_alerts": [],
@@ -82,7 +82,7 @@
     "broad_scan": null
   },
   "scan_scope": "WEATHER_ONLY",
-  "scan_finished_at": "2026-08-25T14:30:22.587525+00:00",
+  "scan_finished_at": "2026-08-25T16:20:14.971521+00:00",
   "markets_scanned": 60,
   "weather_markets_discovered": 60,
   "weather_discovery_complete": true,
@@ -101,5 +101,5 @@
   "open_positions": 0,
   "halted": false,
   "halt_reason": "",
-  "last_successful_scan": "2026-08-25T14:30:22.587555+00:00"
+  "last_successful_scan": "2026-08-25T16:20:14.971551+00:00"
 }
