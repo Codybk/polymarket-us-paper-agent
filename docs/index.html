@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polymarket Cowork Agent</title>
+<style>
+:root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#e6e9ef; --mut:#8b93a7;
+        --pos:#3fb950; --neg:#f85149; --warn:#d29922; --acc:#58a6ff; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+        font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.wrap { max-width:1400px; margin:0 auto; padding:24px; }
+h1 { font-size:20px; margin:0 0 4px; }
+h2 { font-size:15px; margin:32px 0 10px; color:var(--mut);
+      text-transform:uppercase; letter-spacing:.06em; }
+.sub { color:var(--mut); font-size:12px; }
+.banner { padding:12px 16px; border-radius:8px; margin:16px 0; border:1px solid; }
+.banner.ok { background:#0d2818; border-color:#1f6f3d; }
+.banner.halt { background:#3d1418; border-color:var(--neg); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+.card .label { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+.card .value { font-size:22px; font-weight:600; margin-top:6px; }
+.pos { color:var(--pos); } .neg { color:var(--neg); }
+table { width:100%; border-collapse:collapse; background:var(--panel);
+         border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+th { text-align:left; padding:9px 10px; background:#1c2029; color:var(--mut);
+      font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+      border-bottom:1px solid var(--line); }
+td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+td.ev { font-size:12px; color:var(--mut); max-width:320px; }
+td.empty { color:var(--mut); text-align:center; padding:20px; }
+a { color:var(--acc); text-decoration:none; } a:hover { text-decoration:underline; }
+.scroll { overflow-x:auto; }
+.stop { background:#3d1418; border:1px solid var(--neg); border-radius:8px;
+         padding:16px; margin:16px 0; }
+.stop code { background:#00000055; padding:2px 6px; border-radius:4px; }
+</style></head><body><div class="wrap">
+
+<h1>Polymarket Cowork Agent</h1>
+<div class="sub">Paper trading · Polymarket US (CFTC-regulated) · generated 2026-08-25 00:32 UTC</div>
+
+<div class="banner ok"><strong>Running.</strong> Paper mode. No live orders are possible: this repository contains no order-placement code.</div>
+
+
+<div class="stop">
+<strong>■ EMERGENCY STOP</strong>
+<p style="margin:8px 0 0">Set <code>"emergency_stop": true</code> in
+<code>config/risk_config.json</code> and commit — the next scan halts and opens nothing.
+To stop the schedule entirely, disable the workflow in the repository's
+<strong>Actions</strong> tab. Both take effect without any code change.</p>
+<p class="sub" style="margin:8px 0 0">This page is static and deliberately cannot
+trigger any action. No order-placement code exists in this repository.</p>
+</div>
+
+<h2>Bankroll</h2>
+<div class="grid">
+<div class="card"><div class="label">Paper bankroll</div><div class="value">$50.00</div><div class="sub">started $50.00</div></div>
+<div class="card"><div class="label">Realized P&amp;L</div><div class="value ">$0.00</div></div>
+<div class="card"><div class="label">Unrealized P&amp;L</div><div class="value ">$0.00</div></div>
+<div class="card"><div class="label">Drawdown</div><div class="value">0.00%</div><div class="sub">halt at 20.00%</div></div>
+<div class="card"><div class="label">Win rate</div><div class="value">—</div><div class="sub">0 completed</div></div>
+<div class="card"><div class="label">Fees + slippage paid</div><div class="value">$0.00</div></div>
+</div>
+
+<h2>System status</h2>
+<div class="grid">
+<div class="card"><div class="label">Last successful scan</div><div class="value" style="font-size:15px">never</div></div>
+<div class="card"><div class="label">Markets scanned</div><div class="value">—</div></div>
+<div class="card"><div class="label">Opportunities considered</div><div class="value">—</div></div>
+<div class="card"><div class="label">Traded this scan</div><div class="value">—</div></div>
+<div class="card"><div class="label">Audit chain</div><div class="value" style="font-size:15px" class="neg">BROKEN</div><div class="sub">0 records</div></div>
+<div class="card"><div class="label">Mode</div><div class="value" style="font-size:15px">PAPER</div><div class="sub">live disabled</div></div>
+</div>
+
+<h2>Open positions (0)</h2>
+<div class="scroll"><table><tr><th>Market</th><th>Contracts</th><th>Avg price</th><th>Stake</th><th>Mark (exit value)</th><th>Predicted</th><th>Edge at entry</th><th>Opened</th></tr>
+<tr><td colspan="8" class="empty">No open positions.</td></tr></table></div>
+
+<h2>Completed trades (0)</h2>
+<div class="scroll"><table><tr><th>Market</th><th>Contracts</th><th>Entry</th><th>Exit</th><th>Predicted</th><th>Outcome</th><th>Realized P&amp;L</th></tr>
+<tr><td colspan="7" class="empty">No completed trades yet.</td></tr></table></div>
+
+<h2>Calibration by predicted probability</h2>
+<table><tr><th>Bin</th><th>N</th><th>Mean predicted</th><th>Actual frequency</th></tr>
+<tr><td>0–20%</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr>
+<tr><td>20–40%</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr>
+<tr><td>40–60%</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr>
+<tr><td>60–80%</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr>
+<tr><td>80–100%</td><td class='num'>0</td><td class='num'>—</td><td class='num'>—</td></tr></table>
+<div class="sub" style="margin-top:6px">Calibration is meaningless below roughly 30 resolved trades per bin. Treat early rows as noise.</div>
+
+<div class="sub" style="margin-top:14px;padding:10px;border:1px solid var(--line);border-radius:6px">
+<strong>How open positions are marked.</strong> Each is valued at its
+<em>executable, side-aware, fee-inclusive exit</em> — what it could actually be
+closed into right now, walking the real book. A NO position exits against the
+offers, not the bids. A fresh position therefore marks slightly <em>below</em>
+its entry price: you buy at the ask and can only sell at the bid, less fees.
+A <span style="color:var(--warn)">&#9888;</span> marks a position with no executable
+exit, valued at the touch instead. The high-water mark used for drawdown only
+moves after a scan in which every open position was re-marked successfully.
+</div>
+
+<h2>Profit by category</h2>
+<table><tr><th>Category</th><th>Realized P&amp;L</th></tr><tr><td colspan="2" class="empty">No resolved trades yet.</td></tr></table>
+
+<h2>Every opportunity considered this scan (0)</h2>
+<div class="sub" style="margin-bottom:8px">0 traded · 0 skipped, each with its reason.</div>
+<div class="scroll"><table><tr><th>Market</th><th>Bid / Ask</th><th>Spread</th><th>Fair prob</th><th>Net edge</th><th>Decision &amp; reason</th><th>Evidence</th></tr>
+<tr><td colspan="7" class="empty">No markets recorded yet.</td></tr></table></div>
+
+<h2>Risk configuration</h2>
+<div class="scroll"><table>
+<tr><th>Control</th><th>Value</th></tr>
+<tr><td>Kelly fraction</td><td class="num">0.25</td></tr>
+<tr><td>Max per position</td><td class="num">6.00%</td></tr>
+<tr><td>Max total exposure</td><td class="num">20.00%</td></tr>
+<tr><td>Max correlated exposure</td><td class="num">8.00%</td></tr>
+<tr><td>Minimum net edge</td><td class="num">8.0pp</td></tr>
+<tr><td>Max spread</td><td class="num">0.06</td></tr>
+<tr><td>Daily loss halt</td><td class="num">10.00%</td></tr>
+<tr><td>Drawdown halt</td><td class="num">20.00%</td></tr>
+<tr><td>Live trading</td><td class="num">DISABLED</td></tr>
+</table></div>
+
+<p class="sub" style="margin-top:28px">Paper trading only. Simulated fills walk real resting
+order-book depth at the recorded timestamp and never use midpoint prices. Past simulated
+results do not establish an edge. Nothing here is financial advice.</p>
+</div></body></html>

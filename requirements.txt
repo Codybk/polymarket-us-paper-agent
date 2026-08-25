@@ -1,0 +1,4 @@
+# The scanner deliberately uses only the Python standard library so the
+# scheduled job has no dependency-resolution failure mode.
+# Tests only:
+pytest>=8.0

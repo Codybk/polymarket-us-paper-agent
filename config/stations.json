@@ -1,0 +1,63 @@
+{
+  "_source": "https://docs.polymarket.us/faqs/weather-faqs (verified 2026-08-24)",
+  "_note": "Settlement is the NWS Daily Climate Report (CLI) from the listed WFO. Coordinates are the station's own, not the city centre.",
+  "stations": {
+    "KNYC": {
+      "city": "New York City",
+      "name": "Central Park",
+      "lat": 40.779,
+      "lon": -73.9693,
+      "wfo": "OKX",
+      "tz": "America/New_York",
+      "cli_awips": "CLINYC"
+    },
+    "KSFO": {
+      "city": "San Francisco",
+      "name": "San Francisco International",
+      "lat": 37.6197,
+      "lon": -122.3647,
+      "wfo": "MTR",
+      "tz": "America/Los_Angeles",
+      "cli_awips": "CLISFO"
+    },
+    "KMIA": {
+      "city": "Miami",
+      "name": "Miami International",
+      "lat": 25.7906,
+      "lon": -80.3164,
+      "wfo": "MFL",
+      "tz": "America/New_York",
+      "cli_awips": "CLIMIA"
+    },
+    "KMDW": {
+      "city": "Chicago",
+      "name": "Chicago Midway",
+      "lat": 41.7842,
+      "lon": -87.7553,
+      "wfo": "LOT",
+      "tz": "America/Chicago",
+      "cli_awips": "CLIMDW"
+    },
+    "KLAX": {
+      "city": "Los Angeles",
+      "name": "Los Angeles International",
+      "lat": 33.9381,
+      "lon": -118.3889,
+      "wfo": "LOX",
+      "tz": "America/Los_Angeles",
+      "cli_awips": "CLILAX"
+    }
+  },
+  "city_aliases": {
+    "nyc": "KNYC",
+    "new york": "KNYC",
+    "new york city": "KNYC",
+    "sf": "KSFO",
+    "san francisco": "KSFO",
+    "miami": "KMIA",
+    "chicago": "KMDW",
+    "la": "KLAX",
+    "los angeles": "KLAX"
+  },
+  "_cli_note": "cli_awips is the AWIPS product id of the station's Daily Climate Report. The scanner only cites the CLI as a source when it has retrieved a product matching this id AND the contract's target date."
+}
