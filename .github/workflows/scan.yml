@@ -1,0 +1,142 @@
+name: Polymarket paper scan
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub queues scheduled runs on a best-effort basis and
+    # may delay them under load, so treat the cadence as "about every 10 minutes"
+    # rather than a guarantee. Each run records its own timestamp, so any gap is
+    # visible in state/status.json and on the dashboard rather than hidden.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:        # manual run button
+
+permissions:
+  contents: write
+  actions: write        # required only so the job can disable its OWN schedule at 48h
+
+concurrency:
+  # Never let two scans mutate portfolio state at once.
+  group: paper-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify paper mode before doing anything
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          cfg = json.load(open('config/risk_config.json'))
+          if cfg.get('live_trading_enabled'):
+              sys.exit('REFUSING TO RUN: live_trading_enabled is true.')
+          if cfg.get('mode') != 'PAPER':
+              sys.exit(f"REFUSING TO RUN: mode is {cfg.get('mode')}, expected PAPER.")
+          print('Paper mode confirmed. Bankroll:', cfg['starting_bankroll'])
+          PY
+
+      - name: Run tests
+        run: |
+          pip install pytest --quiet
+          python3 -m pytest tests/test_engine.py -q
+
+      - name: Run scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 -m src.run_scan
+
+      - name: Verify audit chain is intact
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, '.')
+          from src.audit import AuditLog
+          v = AuditLog('state/audit.jsonl').verify()
+          print(v)
+          if not v['ok']:
+              sys.exit('AUDIT CHAIN BROKEN — a past record was altered.')
+          PY
+
+      - name: Commit state
+        run: |
+          git config user.name  "polymarket-agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A state docs
+          if git diff --staged --quiet; then
+            echo "no state change"
+          else
+            git commit -m "scan $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            # Another scan may have landed while we ran; rebase rather than force.
+            pushed=0
+            for i in 1 2 3; do
+              if git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
+                 git push origin "HEAD:${GITHUB_REF_NAME}"; then
+                pushed=1; break
+              fi
+              sleep 5
+            done
+            if [ "$pushed" != "1" ]; then
+              echo "::error::Failed to push state. The evaluation window state was"
+              echo "::error::NOT persisted; refusing to continue so the schedule is"
+              echo "::error::not disabled on the basis of state that was thrown away."
+              exit 1
+            fi
+          fi
+
+      - name: Confirm evaluation state is committed on the remote
+        run: |
+          git fetch origin "${GITHUB_REF_NAME}" --quiet
+          if git cat-file -e "origin/${GITHUB_REF_NAME}:state/evaluation.json" 2>/dev/null; then
+            echo "Committed evaluation state on origin:"
+            git show "origin/${GITHUB_REF_NAME}:state/evaluation.json"
+          else
+            echo "::error::state/evaluation.json is not present on the remote."
+            echo "::error::Without it every run restarts the 48h window."
+            exit 1
+          fi
+
+      # Runs LAST, and only once the completion state is provably on the remote.
+      # Disabling the schedule while that state was still local would lose the
+      # very record that justifies the shutdown.
+      - name: Stop the schedule when the 48-hour window closes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          done=$(git show "origin/${GITHUB_REF_NAME}:state/evaluation.json" \
+                 | python3 -c "import json,sys;print(json.load(sys.stdin).get('complete',False))")
+          if [ "$done" = "True" ]; then
+            echo "Evaluation window closed and committed - disabling this workflow."
+            curl -sS -X PUT \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/scan.yml/disable" \
+              && echo "Schedule disabled." \
+              || echo "::warning::disable call failed; the committed complete=true flag still blocks all trading."
+          else
+            echo "Evaluation still running."
+          fi
+
+  publish:
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - uses: actions/deploy-pages@v4
