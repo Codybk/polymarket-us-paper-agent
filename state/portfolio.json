@@ -1,0 +1,11 @@
+{
+  "cash": 50.0,
+  "starting_bankroll": 50.0,
+  "peak_bankroll": 50.0,
+  "day_start_equity": 50.0,
+  "day_start_date": "2026-08-25",
+  "halted": false,
+  "halt_reason": "",
+  "updated_at": "2026-08-25T01:50:15.598246+00:00",
+  "positions": []
+}
