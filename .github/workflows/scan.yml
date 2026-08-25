@@ -1,13 +1,20 @@
 name: Polymarket paper scan
 
 on:
-  workflow_dispatch:
+  schedule:
+    # Every 10 minutes. GitHub queues scheduled runs on a best-effort basis and
+    # may delay them under load, so treat the cadence as "about every 10 minutes"
+    # rather than a guarantee. Each run records its own timestamp, so any gap is
+    # visible in state/status.json and on the dashboard rather than hidden.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:        # manual run button
 
 permissions:
   contents: write
-  actions: write
+  actions: write        # required only so the job can disable its OWN schedule at 48h
 
 concurrency:
+  # Never let two scans mutate portfolio state at once.
   group: paper-scan
   cancel-in-progress: false
 
@@ -17,10 +24,20 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the persister compares HEAD against origin/<branch>
+          # to classify incoming changes, which a shallow clone cannot do.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Sync to the latest branch tip before scanning
+        run: |
+          git config user.name  "polymarket-agent"
+          git config user.email "actions@users.noreply.github.com"
+          python3 scripts/persist.py sync --branch "${GITHUB_REF_NAME}"
 
       - name: Verify paper mode before doing anything
         run: |
@@ -37,7 +54,7 @@ jobs:
       - name: Run tests
         run: |
           pip install pytest --quiet
-          python3 -m pytest tests/test_engine.py -q
+          python3 -m pytest tests/test_engine.py tests/test_persistence.py -q
 
       - name: Run scan
         env:
@@ -57,31 +74,18 @@ jobs:
               sys.exit('AUDIT CHAIN BROKEN — a past record was altered.')
           PY
 
-      - name: Commit state
+      - name: Persist state and dashboard
+        env:
+          SCAN_STAMP: ${{ github.run_id }}
         run: |
-          git config user.name "polymarket-agent"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A state docs
-          if git diff --staged --quiet; then
-            echo "no state change"
-          else
-            git commit -m "scan $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            pushed=0
-            for i in 1 2 3; do
-              if git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
-                 git push origin "HEAD:${GITHUB_REF_NAME}"; then
-                pushed=1
-                break
-              fi
-              sleep 5
-            done
-            if [ "$pushed" != "1" ]; then
-              echo "::error::Failed to push state. The evaluation window state was"
-              echo "::error::NOT persisted; refusing to continue so the schedule is"
-              echo "::error::not disabled on the basis of state that was thrown away."
-              exit 1
-            fi
-          fi
+          # Handles the case where the branch advanced while this scan ran.
+          # Source changes from the remote are adopted, state/ is re-applied,
+          # and docs/index.html is REGENERATED rather than merged -- a
+          # generated file has no meaningful merge, which is what used to make
+          # `git pull --rebase` conflict and silently drop the scan's state.
+          # No force-push, and no path discards either side's work.
+          python3 scripts/persist.py persist --branch "${GITHUB_REF_NAME}" \
+            --message "scan ${GITHUB_RUN_ID} $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Confirm evaluation state is committed on the remote
         run: |
@@ -95,6 +99,9 @@ jobs:
             exit 1
           fi
 
+      # Runs LAST, and only once the completion state is provably on the remote.
+      # Disabling the schedule while that state was still local would lose the
+      # very record that justifies the shutdown.
       - name: Stop the schedule when the 48-hour window closes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

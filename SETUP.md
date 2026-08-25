@@ -109,6 +109,18 @@ Either one works on its own:
 1. **Actions** tab → **Polymarket paper scan** → `···` → **Disable workflow**.
 2. Edit `config/risk_config.json`, set `"emergency_stop": true`, commit.
 
+## A note on the commit log
+
+Every scan leaves a commit. That is deliberate: it is how you can see from
+outside that the schedule is alive, and GitHub disables scheduled workflows
+after 60 days of repository inactivity.
+
+If you edit files in the repository while a scan is running, nothing breaks —
+the scan adopts your change and re-applies its own results on top. The one case
+it refuses is another scan having written `state/` in the meantime; it then
+drops its own results with a warning rather than overwrite them, and the next
+scan picks up from the newer state.
+
 ## If something goes wrong
 
 Open the **Actions** tab and click the failed run — the logs are plain English.

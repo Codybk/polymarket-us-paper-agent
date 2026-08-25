@@ -351,6 +351,50 @@ client feed the envelope through the **transport** (`_get`) so the real
 unwrapping code runs; mocking `get_market_by_slug()` itself would bypass the
 very code under test.
 
+## Persistence under concurrent writes
+
+Every GitHub Actions run is a clean checkout, and `main` can move while a scan
+is in flight. The first production run hit exactly that: a scan started on
+commit A, the branch advanced to B changing `docs/index.html`, and the post-scan
+`git pull --rebase` conflicted on that file.
+
+The root cause is not git — it is that **a generated file was being treated as a
+mergeable one**. Two runs produce different HTML for the same underlying state,
+so there is no sensible line-by-line reconciliation. Worse, mid-rebase `HEAD` is
+detached at the remote commit, so `git push HEAD:main` exits **0** while pushing
+nothing: the workflow could report a clean run having silently dropped the
+scan's state.
+
+`scripts/persist.py` sorts every path into one of three classes, each with one
+correct rule:
+
+| Class | Paths | Rule |
+|---|---|---|
+| **Source** | `src/`, `config/`, `README.md`, `.github/`, … | Never written by a scan. The **remote always wins** — it is strictly newer and we have nothing to contribute. |
+| **State** | `state/**` | The scan's real output. **Ours wins** — unless the remote's state also advanced, meaning another run produced results we never saw. Then we **abort**. |
+| **Generated** | `docs/index.html` | **Never merged.** After syncing to the remote it is simply **regenerated**, so it reflects the merged result by construction and cannot conflict. |
+
+Two supporting guarantees:
+
+- **Sync before scanning.** The run fast-forwards to the branch tip first, so
+  the scan starts from the newest source *and* the newest state. It refuses to
+  do so over a dirty tree, since resetting across uncommitted work is precisely
+  the quiet data loss this module exists to prevent.
+- **No force-push, ever, and nothing discarded.** A push rejected by a
+  concurrent write is retried from a fresh read of the remote, up to four times.
+  If the remote's `state/` advanced, this scan's output is dropped *deliberately
+  and loudly* rather than overwriting another run's results — blindly merging
+  JSONL would also corrupt the audit chain. The next scan simply starts from
+  the newer state.
+
+`tests/test_persistence.py` exercises this against **real git repositories** —
+a bare remote and two clones — because the bug lived in git's behaviour on a
+generated file, not in our bookkeeping around it. It includes
+`test_the_old_rebase_approach_really_did_conflict`, which reproduces the
+original failure and asserts the scan's state is lost. If that test ever stops
+failing under the old strategy, the scenario has drifted and the passing tests
+have stopped proving anything.
+
 ## Audit log
 
 `state/audit.jsonl` is append-only and **hash-chained**: each record embeds the
