@@ -1,20 +1,13 @@
 name: Polymarket paper scan
 
 on:
-  schedule:
-    # Every 10 minutes. GitHub queues scheduled runs on a best-effort basis and
-    # may delay them under load, so treat the cadence as "about every 10 minutes"
-    # rather than a guarantee. Each run records its own timestamp, so any gap is
-    # visible in state/status.json and on the dashboard rather than hidden.
-    - cron: '*/10 * * * *'
-  workflow_dispatch:        # manual run button
+  workflow_dispatch:
 
 permissions:
   contents: write
-  actions: write        # required only so the job can disable its OWN schedule at 48h
+  actions: write
 
 concurrency:
-  # Never let two scans mutate portfolio state at once.
   group: paper-scan
   cancel-in-progress: false
 
@@ -66,19 +59,19 @@ jobs:
 
       - name: Commit state
         run: |
-          git config user.name  "polymarket-agent"
+          git config user.name "polymarket-agent"
           git config user.email "actions@users.noreply.github.com"
           git add -A state docs
           if git diff --staged --quiet; then
             echo "no state change"
           else
             git commit -m "scan $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            # Another scan may have landed while we ran; rebase rather than force.
             pushed=0
             for i in 1 2 3; do
               if git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && \
                  git push origin "HEAD:${GITHUB_REF_NAME}"; then
-                pushed=1; break
+                pushed=1
+                break
               fi
               sleep 5
             done
@@ -102,9 +95,6 @@ jobs:
             exit 1
           fi
 
-      # Runs LAST, and only once the completion state is provably on the remote.
-      # Disabling the schedule while that state was still local would lose the
-      # very record that justifies the shutdown.
       - name: Stop the schedule when the 48-hour window closes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
