@@ -4,6 +4,14 @@ Automated **paper-trading** research system for **Polymarket US** (the
 CFTC-regulated exchange), specialising in temperature contracts settled
 against National Weather Service data.
 
+> ### This is a weather-only run
+> The 48-hour evaluation scans **weather markets only**. They are discovered
+> explicitly by category, tag and search, and paginated to exhaustion. The
+> broad all-markets scan ships **disabled** (`"broad_scan_enabled": false`),
+> because nothing outside weather is auto-traded and paging tens of thousands
+> of unrelated markets every 10 minutes would buy nothing at the cost of
+> thousands of API requests a day. See *Market discovery* for the switch.
+
 > **Live trading is disabled and no live-order code exists in this repository.**
 > `src/pmus_client.py` talks only to the public, unauthenticated market-data
 > gateway. There is no authenticated client, no signing key handling, and no
@@ -48,6 +56,64 @@ a scan costs a few seconds of CPU, not a Claude session.
 - **It never rewrites a past prediction.** See the audit log below.
 
 ---
+
+## Market discovery
+
+**Weather markets are discovered explicitly and exhaustively, before any broad
+scan.** The first live scan reported exactly 4,000 markets, every one of them
+sports, and zero weather. 4,000 is 40 pages x 100 — precisely the old
+`max_pages` cap. Nothing errored; the dashboard showed a healthy scan; the
+weather strategy simply never saw its universe, because an unfiltered listing
+dominated by sports hit its ceiling first.
+
+`src/discovery.py` runs several overlapping targeted strategies and unions the
+results, each paginated until the API stops returning rows:
+
+| Strategy | Endpoint |
+|---|---|
+| Category filter | `GET /v1/markets?categories=weather` (case variants tried) |
+| Tag filter | `GET /v2/tags?query=weather` → `GET /v1/markets?tagIds=<id>` |
+| Free-text search | `GET /v1/search?query=temperature` |
+
+They overlap deliberately: if the category label is not what we guessed, or the
+tag is missing, another route still finds the markets. `test_weather_survives_a_broken_category_filter`
+and `test_weather_survives_a_broken_tags_endpoint` hold that redundancy in place.
+
+Two guarantees follow:
+
+- **Weather is first in the evaluation order**, so a truncated broad listing can
+  never crowd it out.
+- **The broad scan is honest about its limits.** `PagedResult.exhausted` is True
+  only when the API itself ran out of rows. Hitting the safety ceiling — or a
+  server that ignores `offset` and returns the same page forever — sets it False,
+  and the dashboard says **BROAD SCAN TRUNCATED** rather than presenting a slice
+  as the whole market. If weather discovery returns nothing at all, that is
+  raised as a scan error and a red banner, because "no weather markets exist"
+  and "our filters are wrong" look identical from inside the process and both
+  mean the strategy has nothing to trade.
+
+`get_all_markets()` remains only for compatibility and is marked deprecated: it
+returns a bare list and so cannot distinguish a complete listing from a
+truncated one — the exact ambiguity that let a cap silently define the universe.
+
+### The broad scan switch
+
+| Setting | Default | Effect |
+|---|---|---|
+| `broad_scan_enabled` | **`false`** | Weather-only. The unfiltered `/v1/markets` listing is never requested. |
+| `broad_scan_max_pages` | `200` | Safety ceiling, used only when the above is `true`. |
+| `weather_discovery_max_pages` | `50` | Per-strategy ceiling for weather. Always active. |
+| `weather_search_enabled` | `true` | Free-text backstop if category and tag both miss. |
+
+Turning `broad_scan_enabled` on **changes no trading behaviour by itself**. Even
+with the whole listing in hand, non-weather markets are never auto-traded — they
+are written to `state/shortlist.json` for manual review, because this system has
+no defensible automated fair-value model for them. Enable it only alongside a
+deliberately designed non-weather strategy; on its own it costs API requests and
+buys nothing.
+
+Weather discovery is **unaffected** by that switch and always runs to
+exhaustion.
 
 ## Both sides are always evaluated
 

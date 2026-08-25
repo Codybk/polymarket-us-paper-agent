@@ -88,6 +88,42 @@ def build(root: str) -> str:
             'guess — and they are excluded from every performance figure below.'
             f'<ul style="margin:8px 0 0">{rows}</ul></div>')
 
+    weather_only = not st.get("broad_scan_enabled", False)
+    if weather_only:
+        scope_note = "weather markets only"
+    elif st.get("broad_scan_exhausted"):
+        scope_note = "weather + complete broad listing"
+    elif st.get("broad_scan_exhausted") is False:
+        scope_note = "BROAD SCAN TRUNCATED"
+    else:
+        scope_note = ""
+
+    disc_banner = ""
+    if st.get("weather_markets_discovered") == 0 and st.get("last_successful_scan"):
+        disc_banner = (
+            '<div class="banner halt"><strong>NO WEATHER MARKETS FOUND.</strong> '
+            f'The scan saw {st.get("markets_scanned")} markets but zero weather '
+            'markets, so the weather strategy had nothing to evaluate. This is '
+            'the condition that a broad, capped market listing hides — check the '
+            'discovery sources below.</div>')
+    elif weather_only:
+        disc_banner = (
+            '<div class="banner ok"><strong>Weather-only run.</strong> This '
+            'evaluation deliberately scans weather markets only, discovered '
+            'explicitly by category, tag and search and paginated to '
+            'completion. The broad all-markets scan is switched off: nothing '
+            'outside weather is auto-traded, so paging tens of thousands of '
+            'unrelated markets every 10 minutes would buy nothing. Re-enable it '
+            'via <code>"broad_scan_enabled": true</code> only alongside a '
+            'deliberately designed non-weather strategy.</div>')
+    elif st.get("broad_scan_exhausted") is False:
+        disc_banner = (
+            '<div class="banner" style="background:#3d2f14;border-color:var(--warn)">'
+            '<strong>Broad market scan truncated.</strong> The all-markets listing '
+            'hit its page ceiling and is NOT a complete view. Weather markets are '
+            'discovered separately and exhaustively, so the strategy is unaffected; '
+            'the non-weather shortlist is a partial sample.</div>')
+
     status_banner = (
         f'<div class="banner halt"><strong>HALTED — no new positions.</strong> '
         f'{html.escape(st.get("halt_reason","") or "")}</div>'
@@ -146,6 +182,24 @@ def build(root: str) -> str:
         f"<tr><td>{html.escape(k)}</td><td class='num {'pos' if v>0 else 'neg'}'>{_money(v)}</td></tr>"
         for k, v in sorted(cat.items())) or '<tr><td colspan="2" class="empty">No resolved trades yet.</td></tr>'
 
+    d = st.get("discovery") or {}
+    disc_rows = "\n".join(
+        f"<tr><td>{html.escape(str(x.get('source','')))}</td>"
+        f"<td class='num'>{x.get('market_count',0)}</td>"
+        f"<td class='num'>{x.get('pages_fetched',0)}</td>"
+        f"<td class='num' style='color:{'var(--pos)' if x.get('exhausted') else 'var(--warn)'}'>"
+        f"{'yes' if x.get('exhausted') else 'no'}</td>"
+        f"<td class='sub'>{html.escape(str(x.get('error','') or ''))[:160]}</td></tr>"
+        for x in (list(d.get("weather_sources") or [])
+                  + ([d["broad_scan"]] if d.get("broad_scan") else []))
+    ) or '<tr><td colspan="5" class="empty">No discovery data yet.</td></tr>'
+
+    scope_label = ("weather markets only" if weather_only
+                   else "weather + broad market scan")
+    broad_state = ("The broad all-markets scan is <strong>disabled</strong> for "
+                   "this weather-only run." if weather_only else
+                   "The broad all-markets scan runs afterwards and is additive only.")
+
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -186,10 +240,11 @@ a {{ color:var(--acc); text-decoration:none; }} a:hover {{ text-decoration:under
 </style></head><body><div class="wrap">
 
 <h1>Polymarket Cowork Agent</h1>
-<div class="sub">Paper trading · Polymarket US (CFTC-regulated) · generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</div>
+<div class="sub">Paper trading · Polymarket US (CFTC-regulated) · {scope_label} · generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}</div>
 
 {status_banner}
 {stranded_banner}
+{disc_banner}
 
 <div class="stop">
 <strong>■ EMERGENCY STOP</strong>
@@ -214,7 +269,8 @@ trigger any action. No order-placement code exists in this repository.</p>
 <h2>System status</h2>
 <div class="grid">
 <div class="card"><div class="label">Last successful scan</div><div class="value" style="font-size:15px">{html.escape(str(st.get('last_successful_scan','never'))[:19])}</div></div>
-<div class="card"><div class="label">Markets scanned</div><div class="value">{st.get('markets_scanned','—')}</div></div>
+<div class="card"><div class="label">Markets scanned</div><div class="value">{st.get('markets_scanned','—')}</div><div class="sub">{scope_note}</div></div>
+<div class="card"><div class="label">Weather markets found</div><div class="value" style="color:{'var(--pos)' if st.get('weather_markets_discovered') else 'var(--neg)'}">{st.get('weather_markets_discovered','—')}</div><div class="sub">{'discovery complete' if st.get('weather_discovery_complete') else 'DISCOVERY INCOMPLETE'}</div></div>
 <div class="card"><div class="label">Opportunities considered</div><div class="value">{st.get('opportunities_considered','—')}</div></div>
 <div class="card"><div class="label">Traded this scan</div><div class="value">{st.get('traded_this_scan','—')}</div></div>
 <div class="card"><div class="label">Audit chain</div><div class="value" style="font-size:15px" class="{'pos' if chain.get('ok') else 'neg'}">{'intact' if chain.get('ok') else 'BROKEN'}</div><div class="sub">{chain.get('records',0)} records</div></div>
@@ -252,6 +308,11 @@ moves after a scan in which every open position was re-marked successfully.
 <div class="sub" style="margin-bottom:8px">{len(traded)} traded · {len(skipped)} skipped, each with its reason.</div>
 <div class="scroll"><table><tr><th>Market</th><th>Bid / Ask</th><th>Spread</th><th>Fair prob</th><th>Net edge</th><th>Decision &amp; reason</th><th>Evidence</th></tr>
 {opp_rows(traded + skipped)}</table></div>
+
+<h2>Market discovery</h2>
+<div class="scroll"><table><tr><th>Source</th><th>Markets</th><th>Pages</th><th>Ran to exhaustion</th><th>Note</th></tr>
+{disc_rows}</table></div>
+<div class="sub" style="margin-top:6px">Weather markets are queried explicitly by category, tag and search, and paginated to completion. {broad_state} A truncated broad listing can therefore never hide a weather market.</div>
 
 <h2>Risk configuration</h2>
 <div class="scroll"><table>

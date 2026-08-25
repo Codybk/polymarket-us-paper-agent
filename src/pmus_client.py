@@ -90,8 +90,15 @@ def get_markets(limit: int = 100, offset: int = 0, active: bool = True,
     return payload or []
 
 
-def get_all_markets(page: int = 100, max_pages: int = 40, **kw) -> List[Dict]:
-    """Page through every accessible active market."""
+def get_all_markets(page: int = 100, max_pages: int = 200, **kw) -> List[Dict]:
+    """Page through active markets.
+
+    DEPRECATED for discovery. Use src.discovery, which reports whether a
+    listing actually ran to exhaustion. This function returns a bare list and
+    so cannot tell a complete listing from a truncated one -- the ambiguity
+    that let a 40-page cap silently define the entire scanning universe while
+    the dashboard reported a healthy 4,000-market scan.
+    """
     out, offset = [], 0
     for _ in range(max_pages):
         batch = get_markets(limit=page, offset=offset, **kw)
@@ -101,6 +108,38 @@ def get_all_markets(page: int = 100, max_pages: int = 40, **kw) -> List[Dict]:
         if len(batch) < page:
             break
         offset += page
+    return out
+
+
+def get_tags(query: Optional[str] = None, slug: Optional[List[str]] = None,
+             limit: int = 100, offset: int = 0) -> List[Dict]:
+    """GET /v2/tags -> gateway.tags.v1.GetTagsResponse {tags: [...]}
+
+    `query` is a case-insensitive substring match on the tag label.
+    docs.polymarket.us/api-reference/tags/get-tags
+    """
+    payload = _get("/v2/tags", {"query": query, "slug": slug,
+                                "limit": limit, "offset": offset})
+    if isinstance(payload, dict):
+        return payload.get("tags", []) or []
+    return payload or []
+
+
+def search_markets(query: str, limit: int = 100, page: int = 1) -> List[Dict]:
+    """GET /v1/search -> {events: [Event]}; Event.markets holds the markets.
+
+    Flattened to a market list so callers see the same shape as /v1/markets.
+    docs.polymarket.us/api-reference/search/search
+    """
+    payload = _get("/v1/search", {"query": query, "limit": limit, "page": page})
+    events = payload.get("events", []) if isinstance(payload, dict) else []
+    out: List[Dict] = []
+    for ev in events or []:
+        if not isinstance(ev, dict):
+            continue
+        for m in ev.get("markets") or []:
+            if isinstance(m, dict):
+                out.append(m)
     return out
 
 

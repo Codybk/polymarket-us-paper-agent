@@ -9,7 +9,7 @@ import json, os, sys, shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from src import pmus_client, nws_client
+from src import pmus_client, nws_client, discovery
 
 from datetime import datetime as _dt, timedelta as _td
 from zoneinfo import ZoneInfo as _ZI
@@ -139,8 +139,24 @@ SETTLED_MARKETS = {}
 
 
 def install_mocks():
+    def _get_markets(limit=100, offset=0, active=True, closed=False,
+                     categories=None, tagIds=None, **kw):
+        if categories:
+            pool = [m for m in MARKETS
+                    if str(m.get("category", "")).lower()
+                    in {str(c).lower() for c in categories}]
+        elif tagIds:
+            pool = [m for m in MARKETS
+                    if str(m.get("category", "")).lower() == "weather"]
+        else:
+            pool = MARKETS
+        return pool[offset:offset + limit]
+
+    pmus_client.get_markets = _get_markets
     pmus_client.get_all_markets = lambda **kw: MARKETS
-    pmus_client.get_markets = lambda **kw: MARKETS
+    pmus_client.get_tags = lambda **kw: [{"id": 77, "slug": "weather", "label": "Weather"}]
+    pmus_client.search_markets = lambda q, **kw: []
+    discovery.pm = pmus_client
     pmus_client.get_market_book = lambda slug: BOOKS.get(slug) or (_ for _ in ()).throw(
         pmus_client.DataError(f"no book for {slug}"))
     # Settlement lookups are now independent of the book and run on every
@@ -193,7 +209,10 @@ def main():
               f"stake ${p['stake']:.2f} fee ${p['entry_fee']:.2f} "
               f"mark {p['mark_price']:.4f} "
               f"pred {p['predicted_prob']:.1%} edge {p['edge_pp_at_entry']:.1f}pp")
-    print(f"shortlisted (non-weather, never auto-traded): {[s['slug'] for s in sl]}")
+    scope = ("WEATHER-ONLY" if not json.load(open(os.path.join(
+        ROOT, "config", "risk_config.json"))).get("broad_scan_enabled")
+        else "WEATHER + BROAD")
+    print(f"scan scope: {scope} | shortlisted non-weather: {[s['slug'] for s in sl]}")
 
     from src.audit import AuditLog
     print("\naudit:", AuditLog(os.path.join(state, "audit.jsonl")).verify())
@@ -216,7 +235,14 @@ def main():
         assert p_["predicted_prob"] < 1.0, "the model must never claim certainty"
     assert any("not machine-parseable" in o.get("reason","") for o in opps if o["slug"]=="miami-hot-day")
     assert any("spread" in o.get("reason","") for o in opps if o["slug"].startswith("sf-"))
-    assert any(o["slug"]=="fed-cut-september" and not o["traded"] for o in opps)
+    # Shipped config is weather-only: the non-weather market must not even be
+    # fetched, so it should not appear among the considered opportunities.
+    cfg_now = json.load(open(os.path.join(ROOT, "config", "risk_config.json")))
+    if cfg_now.get("broad_scan_enabled"):
+        assert any(o["slug"] == "fed-cut-september" and not o["traded"] for o in opps)
+    else:
+        assert not any(o["slug"] == "fed-cut-september" for o in opps), \
+            "weather-only run should not consider non-weather markets"
     assert any("volume" in o.get("reason","") for o in opps if o["slug"]=="tiny-market")
 
     # An overpriced market must be traded from the NO side.

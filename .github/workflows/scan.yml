@@ -1,6 +1,12 @@
 name: Polymarket paper scan
 
 on:
+  schedule:
+    # Every 10 minutes. GitHub queues scheduled runs on a best-effort basis and
+    # may delay them under load, so treat the cadence as "about every 10 minutes"
+    # rather than a guarantee. Each run records its own timestamp, so any gap is
+    # visible in state/status.json and on the dashboard rather than hidden.
+    - cron: '*/10 * * * *'
   workflow_dispatch:        # manual run button
 
 permissions:

@@ -23,6 +23,7 @@ from src import pmus_client as pm            # noqa: E402
 from src import nws_client as nws            # noqa: E402
 from src import scanner                      # noqa: E402
 from src import settlement                   # noqa: E402
+from src import discovery                    # noqa: E402
 from src.book import best_no_ask, no_depth_within  # noqa: E402
 from src.audit import AuditLog               # noqa: E402
 from src.book import (Book, simulate_market_buy, simulate_market_buy_no,  # noqa: E402
@@ -261,22 +262,53 @@ def main() -> int:
             prev_status = {}
     consecutive_errors = prev_status.get("consecutive_errors", 0)
 
-    # ---- 3. fetch the market universe -----------------------------------
+    # ---- 3. discover the market universe --------------------------------
+    # Weather is discovered EXPLICITLY and EXHAUSTIVELY first, using the
+    # documented category/tag filters. The broad listing runs afterwards and is
+    # additive only. The first live scan walked 4,000 unfiltered markets -- all
+    # sports, zero weather -- because 40 pages x 100 was the cap; a targeted
+    # query returns tens of markets and genuinely completes.
     markets: List[Dict] = []
+    disc = None
     try:
-        markets = pm.get_all_markets(page=100, active=True, closed=False)
+        disc = discovery.discover(
+            page_size=cfg.get("market_page_size", 100),
+            weather_max_pages=cfg.get("weather_discovery_max_pages", 50),
+            broad_max_pages=cfg.get("broad_scan_max_pages", 200),
+            include_broad=cfg.get("broad_scan_enabled", True),
+            use_search=cfg.get("weather_search_enabled", True),
+        )
+        markets = disc.universe
+        status["discovery"] = disc.to_dict()
         data_age = 0.0
+
+        if not disc.weather:
+            errors.append("weather discovery returned NO markets -- the weather "
+                          "strategy has nothing to evaluate")
+        if not disc.weather_complete:
+            status["warnings"].append(
+                "weather discovery did not run to exhaustion; some weather "
+                "markets may be unseen")
+        if disc.broad is None:
+            status["scan_scope"] = "WEATHER_ONLY"
+        elif not disc.broad.exhausted:
+            status["warnings"].append(
+                f"broad market scan is TRUNCATED, not complete "
+                f"({len(disc.broad.markets)} markets over "
+                f"{disc.broad.pages_fetched} pages): "
+                f"{disc.broad.error or 'safety ceiling reached'}")
+        log.append("discovery", disc.to_dict())
     except Exception as e:  # noqa: BLE001
         data_ok = False
         data_age = None
-        errors.append(f"market fetch: {e}")
+        errors.append(f"market discovery: {e}")
 
     verdict = evaluate(pf, cfg,
                        data_age_seconds=(0.0 if data_ok else None),
                        consecutive_errors=consecutive_errors + (1 if errors else 0),
                        data_ok=data_ok, feed_verified=data_ok)
     status["halts"] = verdict.halts
-    status["warnings"] = verdict.warnings
+    status["warnings"] = list(status.get("warnings", [])) + list(verdict.warnings)
 
     if verdict.halts:
         pf.halted = True
@@ -513,6 +545,12 @@ def main() -> int:
     status.update({
         "scan_finished_at": now(),
         "markets_scanned": len(markets),
+        "weather_markets_discovered": len(disc.weather) if disc else 0,
+        "weather_discovery_complete": bool(disc.weather_complete) if disc else False,
+        "broad_scan_exhausted": bool(disc.broad.exhausted) if (disc and disc.broad) else None,
+        "broad_scan_enabled": bool(cfg.get("broad_scan_enabled", False)),
+        "scan_scope": ("WEATHER_ONLY" if not cfg.get("broad_scan_enabled", False)
+                       else "WEATHER_PLUS_BROAD"),
         "opportunities_considered": len(opportunities),
         "traded_this_scan": sum(1 for o in opportunities if o.get("traded")),
         "shortlisted_for_review": len(shortlist),

@@ -24,5 +24,11 @@
   ],
   "scan_interval_minutes": 10,
   "evaluation_hours": 48,
-  "_immutable": "Deployment configuration. Running code never writes this file; mutable run state lives in state/evaluation.json."
+  "_immutable": "Deployment configuration. Running code never writes this file; mutable run state lives in state/evaluation.json.",
+  "market_page_size": 100,
+  "weather_discovery_max_pages": 50,
+  "broad_scan_max_pages": 200,
+  "broad_scan_enabled": false,
+  "weather_search_enabled": true,
+  "_broad_scan_note": "WEATHER-ONLY RUN. The broad all-markets scan is OFF by default. This system only auto-trades weather markets, so paging up to 20,000 non-weather markets every 10 minutes would spend thousands of API requests a day on markets it can never act on. Explicit weather discovery (category + tag + search) is unaffected and still runs to exhaustion. Set this to true ONLY alongside a deliberately designed non-weather strategy; on its own it just populates state/shortlist.json for manual review and changes no trading behaviour."
 }

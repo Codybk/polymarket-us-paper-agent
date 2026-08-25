@@ -657,6 +657,36 @@ def test_no_exit_without_offers_refuses():
 # Testing exit_fill() alone would NOT have caught this: exit_fill was already
 # correct. The defect lived in the entry path. So this exercises a real scan.
 
+
+def _mock_discovery(monkeypatch, markets):
+    """Mock the endpoints discovery uses, with real offset pagination.
+
+    run_scan now goes through src.discovery, which calls get_markets /
+    get_tags / search_markets. Mocking the old get_all_markets would leave
+    discovery reaching for the network.
+    """
+    from src import pmus_client as pmc, discovery as dsc
+
+    def _get_markets(limit=100, offset=0, active=True, closed=False,
+                     categories=None, tagIds=None, **kw):
+        if categories:
+            pool = [m for m in markets
+                    if str(m.get("category", "")).lower()
+                    in {str(c).lower() for c in categories}]
+        elif tagIds:
+            pool = [m for m in markets
+                    if str(m.get("category", "")).lower() == "weather"]
+        else:
+            pool = markets
+        return pool[offset:offset + limit]
+
+    monkeypatch.setattr(pmc, "get_markets", _get_markets)
+    monkeypatch.setattr(pmc, "get_tags",
+                        lambda **kw: [{"id": 77, "slug": "weather", "label": "Weather"}])
+    monkeypatch.setattr(pmc, "search_markets", lambda q, **kw: [])
+    monkeypatch.setattr(dsc, "pm", pmc)
+    return pmc
+
 def _run_first_scan(tmp_path, monkeypatch, markets, books, obs, fcst):
     """Run one real scan cycle against mocked feeds, in an isolated state dir."""
     from src import run_scan as rs, scanner as sc, pmus_client as pmc, nws_client as nwc
@@ -682,7 +712,7 @@ def _run_first_scan(tmp_path, monkeypatch, markets, books, obs, fcst):
     monkeypatch.setattr(rs, "HERE", str(tmp_path))
     monkeypatch.setattr(rs.dashboard, "build", lambda root: None)
 
-    monkeypatch.setattr(pmc, "get_all_markets", lambda **kw: markets)
+    _mock_discovery(monkeypatch, markets)
     monkeypatch.setattr(pmc, "get_market_book", lambda slug: books[slug])
     monkeypatch.setattr(pmc, "get_market_by_slug", lambda slug: {})
     monkeypatch.setattr(nwc, "observed_extremes_f", lambda s, t: obs)
@@ -926,7 +956,7 @@ def _scan_with_settlement(tmp_path, monkeypatch, *, side, book, settle_payload,
     def _market(slug):
         return market if state_box["phase"] == 1 else market_payload
 
-    monkeypatch.setattr(pmc, "get_all_markets", lambda **kw: [market])
+    _mock_discovery(monkeypatch, [market])
     monkeypatch.setattr(pmc, "get_market_book", _book)
     monkeypatch.setattr(pmc, "get_market_settlement", _settlement)
 
@@ -1247,3 +1277,398 @@ def test_e2e_terminality_from_market_payload_alone_when_book_is_gone(
     assert "MALFORMED" in p["resolution_error"]
     errs = [a for a in audit if a["event_type"] == "settlement_error"]
     assert errs, "the operator must be told; silence here is the whole failure"
+
+
+# ---------------------------------------------------------------------------
+# REGRESSION: the 4,000-market cap that hid every weather market
+# ---------------------------------------------------------------------------
+# The first live scan reported exactly 4,000 markets, all sports, zero weather.
+# 4,000 = 40 pages x 100, the old max_pages cap. Nothing errored; the dashboard
+# showed a healthy scan; the weather strategy simply never saw its universe.
+from src import discovery as _disc
+
+
+def _sports(n, start=0):
+    return [{"slug": f"nba-game-{i}", "id": 100000 + i, "question": f"Team A vs B #{i}",
+             "category": "sports", "active": True, "closed": False,
+             "volume": 50000, "endDate": "2026-12-01T00:00:00Z"}
+            for i in range(start, start + n)]
+
+
+def _weather(n=5):
+    from datetime import datetime as _dt, timedelta as _td
+    from zoneinfo import ZoneInfo as _ZI
+    today = _dt.now(_ZI("America/New_York")).date()
+    human = today.strftime("%B %-d, %Y")
+    settles = (today + _td(days=1)).isoformat() + "T12:00:00Z"
+    return [{"slug": f"nyc-high-above-{80 + i}", "id": 900000 + i,
+             "question": f"Will the high temperature in NYC be above {80 + i}F on {human}?",
+             "description": "Station KNYC.", "rulesDisclaimer": "Station KNYC.",
+             "category": "weather", "active": True, "closed": False,
+             "volume": 40000, "endDate": settles, "minimumTradeQty": 1,
+             "feeCoefficient": 0.06}
+            for i in range(n)]
+
+
+# 4,500 sports markets, then the weather markets -- i.e. weather sits FAR
+# beyond where the old 40-page cap stopped looking.
+BIG_SPORTS = _sports(4500)
+BIG_WEATHER = _weather(5)
+BIG_UNIVERSE = BIG_SPORTS + BIG_WEATHER
+
+
+def _install_big_universe(monkeypatch, *, category_filter_works=True,
+                          tags_work=True, search_works=True):
+    """Mock /v1/markets with real offset pagination over 4,505 markets."""
+    from src import pmus_client as pmc
+
+    calls = {"unfiltered_pages": 0, "category_pages": 0, "tag_pages": 0, "search": 0}
+
+    def _get_markets(limit=100, offset=0, active=True, closed=False,
+                     categories=None, tagIds=None, **kw):
+        if categories:
+            calls["category_pages"] += 1
+            if not category_filter_works:
+                return []
+            pool = [m for m in BIG_UNIVERSE
+                    if m["category"].lower() in {c.lower() for c in categories}]
+        elif tagIds:
+            calls["tag_pages"] += 1
+            if not tags_work:
+                return []
+            pool = BIG_WEATHER
+        else:
+            calls["unfiltered_pages"] += 1
+            pool = BIG_UNIVERSE
+        return pool[offset:offset + limit]
+
+    def _get_tags(query=None, slug=None, limit=100, offset=0):
+        if not tags_work:
+            raise pmc.DataError("tags endpoint unavailable")
+        return [{"id": 77, "slug": "weather", "label": "Weather"}]
+
+    def _search(query, limit=100, page=1):
+        calls["search"] += 1
+        if not search_works:
+            raise pmc.DataError("search unavailable")
+        return BIG_WEATHER if "temp" in query.lower() or "weather" in query.lower() else []
+
+    monkeypatch.setattr(pmc, "get_markets", _get_markets)
+    monkeypatch.setattr(pmc, "get_tags", _get_tags)
+    monkeypatch.setattr(pmc, "search_markets", _search)
+    monkeypatch.setattr(_disc, "pm", pmc)
+    return calls
+
+
+def test_weather_found_beyond_the_old_4000_cap(monkeypatch):
+    """The headline regression: weather sits past market 4,000 and is still found."""
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    slugs = {m["slug"] for m in res.weather}
+    assert slugs == {m["slug"] for m in BIG_WEATHER}, (
+        f"weather discovery missed markets: {slugs}")
+    assert res.weather_complete is True
+
+def test_weather_is_first_in_the_universe(monkeypatch):
+    """A truncated broad scan must never crowd weather out of evaluation."""
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=5)
+    head = [m["slug"] for m in res.universe[:len(BIG_WEATHER)]]
+    assert set(head) == {m["slug"] for m in BIG_WEATHER}
+    assert res.broad.exhausted is False, "a 5-page scan of 4,505 markets is truncated"
+
+def test_broad_scan_reports_truncation_honestly(monkeypatch):
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=40)
+    assert len(res.broad.markets) == 4000, "reproduces the exact reported symptom"
+    assert res.broad.exhausted is False
+    assert "TRUNCATED" in res.broad.error
+
+def test_broad_scan_reports_completion_when_it_finishes(monkeypatch):
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    assert res.broad.exhausted is True and res.broad.error == ""
+    assert len(res.broad.markets) == len(BIG_UNIVERSE)
+
+def test_weather_survives_a_broken_category_filter(monkeypatch):
+    """If the category label is wrong, tags and search must still find weather."""
+    _install_big_universe(monkeypatch, category_filter_works=False)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    assert {m["slug"] for m in res.weather} == {m["slug"] for m in BIG_WEATHER}
+
+def test_weather_survives_a_broken_tags_endpoint(monkeypatch):
+    _install_big_universe(monkeypatch, tags_work=False)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    assert {m["slug"] for m in res.weather} == {m["slug"] for m in BIG_WEATHER}
+
+def test_total_weather_discovery_failure_is_flagged(monkeypatch):
+    _install_big_universe(monkeypatch, category_filter_works=False,
+                          tags_work=False, search_works=False)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    assert res.weather == [] and res.weather_complete is False
+
+def test_pagination_stops_on_a_non_advancing_offset(monkeypatch):
+    """A server ignoring `offset` must not spin forever, nor look complete."""
+    from src import pmus_client as pmc
+    monkeypatch.setattr(pmc, "get_markets",
+                        lambda limit=100, offset=0, **kw: _sports(limit))
+    monkeypatch.setattr(_disc, "pm", pmc)
+    res = _disc.paginate(lambda lim, off: pmc.get_markets(limit=lim, offset=off),
+                         page_size=100, max_pages=50)
+    assert res.exhausted is False and "stopped advancing" in res.error
+    assert res.pages_fetched < 50
+
+def test_discovery_dedupes_across_strategies(monkeypatch):
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, broad_max_pages=200)
+    slugs = [m["slug"] for m in res.weather]
+    assert len(slugs) == len(set(slugs))
+    universe = [m["slug"] for m in res.universe]
+    assert len(universe) == len(set(universe))
+
+
+def test_e2e_weather_evaluated_despite_4500_sports_markets_first(
+        tmp_path, monkeypatch):
+    """Full scan over 4,505 markets where weather sits past the old cap.
+
+    Discovery alone is not enough -- the weather markets must reach the
+    evaluator and be priced. This asserts on the recorded opportunities, so a
+    regression that finds them but drops them before evaluation still fails.
+    """
+    from src import run_scan as rs, scanner as sc, pmus_client as pmc, nws_client as nwc
+
+    state = tmp_path / "state"; state.mkdir(parents=True)
+    (tmp_path / "docs").mkdir(); (tmp_path / "config").mkdir()
+    # This test is about BROAD-scan behaviour, so it enables the switch that
+    # ships off. It doubles as proof the switch still works.
+    cfg = dict(CFG); cfg["broad_scan_enabled"] = True
+    cfg_path = tmp_path / "config" / "risk_config.json"
+    json.dump(cfg, open(cfg_path, "w"))
+    _shutil.copy(os.path.join(ROOT, "config", "stations.json"),
+                 tmp_path / "config" / "stations.json")
+    for attr, val in [
+        ("STATE_DIR", str(state)),
+        ("PORTFOLIO_PATH", str(state / "portfolio.json")),
+        ("AUDIT_PATH", str(state / "audit.jsonl")),
+        ("STATUS_PATH", str(state / "status.json")),
+        ("SHORTLIST_PATH", str(state / "shortlist.json")),
+        ("OPPS_PATH", str(state / "opportunities.json")),
+        ("EVAL_PATH", str(state / "evaluation.json")),
+        ("HERE", str(tmp_path)),
+        ("CFG_PATH", str(cfg_path)),
+        ("STATIONS_PATH", os.path.join(ROOT, "config", "stations.json")),
+    ]:
+        monkeypatch.setattr(rs, attr, val)
+    monkeypatch.setattr(rs.dashboard, "build", lambda root: None)
+
+    _install_big_universe(monkeypatch)
+
+    books = {m["slug"]: {"marketData": {
+        "marketSlug": m["slug"], "state": "MARKET_STATE_OPEN",
+        "transactTime": "2026-08-25T00:00:00Z",
+        "bids": [{"px": 0.60, "qty": 600}],
+        "offers": [{"px": 0.62, "qty": 600}]}} for m in BIG_UNIVERSE}
+    monkeypatch.setattr(pmc, "get_market_book", lambda slug: books[slug])
+    monkeypatch.setattr(pmc, "get_market_settlement", lambda slug: None)
+    monkeypatch.setattr(pmc, "get_market_by_slug", lambda slug: None)
+    monkeypatch.setattr(nwc, "observed_extremes_f",
+                        lambda s, t: {"station": "KNYC", "count": 30,
+                                      "max_f": 95.0, "min_f": 74.0})
+    monkeypatch.setattr(nwc, "forecast_daily_extremes_f",
+                        lambda a, b, c: {"high_f": 96.0, "low_f": 74.0, "hours": 24})
+    monkeypatch.setattr(sc, "pm", pmc); monkeypatch.setattr(sc, "nws", nwc)
+    monkeypatch.setattr(rs, "pm", pmc)
+
+    assert rs.main() == 0
+
+    opps = json.load(open(state / "opportunities.json"))
+    status = json.load(open(state / "status.json"))
+    by_slug = {o["slug"]: o for o in opps}
+
+    # Every weather market must have been CONSIDERED...
+    for m in BIG_WEATHER:
+        assert m["slug"] in by_slug, (
+            f"{m['slug']} never reached the evaluator -- discovery regression")
+
+    # ...and actually EVALUATED, not merely listed.
+    priced = [by_slug[m["slug"]] for m in BIG_WEATHER
+              if by_slug[m["slug"]].get("fair_probability") is not None]
+    assert priced, (
+        "weather markets were listed but none were priced; they reached the "
+        "loop and were dropped before valuation")
+    assert any(o.get("station") == "KNYC" for o in priced)
+
+    assert status["weather_markets_discovered"] == len(BIG_WEATHER)
+    assert status["weather_discovery_complete"] is True
+    assert status["markets_scanned"] > 4000, (
+        f"only {status['markets_scanned']} scanned; the cap is back")
+
+def test_e2e_weather_evaluated_even_when_broad_scan_is_capped(
+        tmp_path, monkeypatch):
+    """Weather must survive a broad scan that truncates, and be labelled so."""
+    from src import run_scan as rs, scanner as sc, pmus_client as pmc, nws_client as nwc
+
+    state = tmp_path / "state"; state.mkdir(parents=True)
+    (tmp_path / "docs").mkdir(); (tmp_path / "config").mkdir()
+    cfg = json.load(open(os.path.join(ROOT, "config", "risk_config.json")))
+    cfg["broad_scan_enabled"] = True          # this test is about the broad scan
+    cfg["broad_scan_max_pages"] = 5           # force truncation
+    cfg_path = tmp_path / "config" / "risk_config.json"
+    json.dump(cfg, open(cfg_path, "w"))
+    _shutil.copy(os.path.join(ROOT, "config", "stations.json"),
+                 tmp_path / "config" / "stations.json")
+    for attr, val in [
+        ("STATE_DIR", str(state)),
+        ("PORTFOLIO_PATH", str(state / "portfolio.json")),
+        ("AUDIT_PATH", str(state / "audit.jsonl")),
+        ("STATUS_PATH", str(state / "status.json")),
+        ("SHORTLIST_PATH", str(state / "shortlist.json")),
+        ("OPPS_PATH", str(state / "opportunities.json")),
+        ("EVAL_PATH", str(state / "evaluation.json")),
+        ("HERE", str(tmp_path)),
+        ("CFG_PATH", str(cfg_path)),
+        ("STATIONS_PATH", os.path.join(ROOT, "config", "stations.json")),
+    ]:
+        monkeypatch.setattr(rs, attr, val)
+    monkeypatch.setattr(rs.dashboard, "build", lambda root: None)
+    _install_big_universe(monkeypatch)
+    books = {m["slug"]: {"marketData": {
+        "marketSlug": m["slug"], "state": "MARKET_STATE_OPEN",
+        "transactTime": "2026-08-25T00:00:00Z",
+        "bids": [{"px": 0.60, "qty": 600}], "offers": [{"px": 0.62, "qty": 600}]}}
+        for m in BIG_UNIVERSE}
+    monkeypatch.setattr(pmc, "get_market_book", lambda slug: books[slug])
+    monkeypatch.setattr(pmc, "get_market_settlement", lambda slug: None)
+    monkeypatch.setattr(pmc, "get_market_by_slug", lambda slug: None)
+    monkeypatch.setattr(nwc, "observed_extremes_f",
+                        lambda s, t: {"station": "KNYC", "count": 30,
+                                      "max_f": 95.0, "min_f": 74.0})
+    monkeypatch.setattr(nwc, "forecast_daily_extremes_f",
+                        lambda a, b, c: {"high_f": 96.0, "low_f": 74.0, "hours": 24})
+    monkeypatch.setattr(sc, "pm", pmc); monkeypatch.setattr(sc, "nws", nwc)
+    monkeypatch.setattr(rs, "pm", pmc)
+
+    assert rs.main() == 0
+    opps = {o["slug"] for o in json.load(open(state / "opportunities.json"))}
+    status = json.load(open(state / "status.json"))
+    for m in BIG_WEATHER:
+        assert m["slug"] in opps, "a capped broad scan must not hide weather"
+    assert status["broad_scan_exhausted"] is False
+    assert any("TRUNCATED" in w for w in status["warnings"]), (
+        "a truncated scan must be labelled honestly, not reported as complete")
+
+
+# ---------------------------------------------------------------------------
+# WEATHER-ONLY RUN: the broad scan is off by default
+# ---------------------------------------------------------------------------
+# Non-weather markets are never auto-traded, so paging up to 20,000 of them
+# every 10 minutes would spend thousands of API requests a day buying nothing.
+# Explicit weather discovery is unaffected and still runs to exhaustion.
+
+def test_broad_scan_is_disabled_by_default_in_shipped_config():
+    assert CFG["broad_scan_enabled"] is False, (
+        "the 48-hour evaluation is weather-only; the broad scan must ship off")
+    assert CFG["weather_search_enabled"] is True
+    assert CFG["weather_discovery_max_pages"] >= 50
+
+def test_weather_only_never_calls_the_unfiltered_endpoint(monkeypatch):
+    """The whole point: zero unfiltered pages fetched."""
+    calls = _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50,
+                         broad_max_pages=200, include_broad=False)
+    assert calls["unfiltered_pages"] == 0, (
+        f"{calls['unfiltered_pages']} unfiltered pages fetched in a weather-only run")
+    assert calls["category_pages"] > 0, "the category filter must still be queried"
+    assert {m["slug"] for m in res.weather} == {m["slug"] for m in BIG_WEATHER}
+    assert res.weather_complete is True
+    assert res.broad is None and res.other == []
+
+def test_weather_only_universe_is_exactly_the_weather_markets(monkeypatch):
+    _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50, include_broad=False)
+    assert {m["slug"] for m in res.universe} == {m["slug"] for m in BIG_WEATHER}
+
+def test_broad_scan_switch_still_works_when_enabled(monkeypatch):
+    """The switch is documented and must remain functional for later use."""
+    calls = _install_big_universe(monkeypatch)
+    res = _disc.discover(page_size=100, weather_max_pages=50,
+                         broad_max_pages=200, include_broad=True)
+    assert calls["unfiltered_pages"] > 0
+    assert res.broad is not None and res.broad.exhausted is True
+    assert len(res.universe) == len(BIG_UNIVERSE)
+
+def test_e2e_weather_only_scan_reports_its_scope(tmp_path, monkeypatch):
+    """A real scan with the shipped config: weather evaluated, scope labelled."""
+    from src import run_scan as rs, scanner as sc, pmus_client as pmc, nws_client as nwc
+
+    state = tmp_path / "state"; state.mkdir(parents=True)
+    (tmp_path / "docs").mkdir(); (tmp_path / "config").mkdir()
+    for f in ("risk_config.json", "stations.json"):
+        _shutil.copy(os.path.join(ROOT, "config", f), tmp_path / "config" / f)
+    for attr, val in [
+        ("STATE_DIR", str(state)),
+        ("PORTFOLIO_PATH", str(state / "portfolio.json")),
+        ("AUDIT_PATH", str(state / "audit.jsonl")),
+        ("STATUS_PATH", str(state / "status.json")),
+        ("SHORTLIST_PATH", str(state / "shortlist.json")),
+        ("OPPS_PATH", str(state / "opportunities.json")),
+        ("EVAL_PATH", str(state / "evaluation.json")),
+        ("HERE", str(tmp_path)),
+        ("CFG_PATH", os.path.join(ROOT, "config", "risk_config.json")),
+        ("STATIONS_PATH", os.path.join(ROOT, "config", "stations.json")),
+    ]:
+        monkeypatch.setattr(rs, attr, val)
+    monkeypatch.setattr(rs.dashboard, "build", lambda root: None)
+
+    calls = _install_big_universe(monkeypatch)
+    books = {m["slug"]: {"marketData": {
+        "marketSlug": m["slug"], "state": "MARKET_STATE_OPEN",
+        "transactTime": "2026-08-25T00:00:00Z",
+        "bids": [{"px": 0.60, "qty": 600}], "offers": [{"px": 0.62, "qty": 600}]}}
+        for m in BIG_UNIVERSE}
+    monkeypatch.setattr(pmc, "get_market_book", lambda slug: books[slug])
+    monkeypatch.setattr(pmc, "get_market_settlement", lambda slug: None)
+    monkeypatch.setattr(pmc, "get_market_by_slug", lambda slug: None)
+    monkeypatch.setattr(nwc, "observed_extremes_f",
+                        lambda s, t: {"station": "KNYC", "count": 30,
+                                      "max_f": 95.0, "min_f": 74.0})
+    monkeypatch.setattr(nwc, "forecast_daily_extremes_f",
+                        lambda a, b, c: {"high_f": 96.0, "low_f": 74.0, "hours": 24})
+    monkeypatch.setattr(sc, "pm", pmc); monkeypatch.setattr(sc, "nws", nwc)
+    monkeypatch.setattr(rs, "pm", pmc)
+
+    assert rs.main() == 0
+    status = json.load(open(state / "status.json"))
+    opps = json.load(open(state / "opportunities.json"))
+
+    assert calls["unfiltered_pages"] == 0, "weather-only run touched the broad listing"
+    assert status["scan_scope"] == "WEATHER_ONLY"
+    assert status["broad_scan_enabled"] is False
+    assert status["weather_markets_discovered"] == len(BIG_WEATHER)
+    assert status["weather_discovery_complete"] is True
+    assert status["markets_scanned"] == len(BIG_WEATHER), (
+        "a weather-only scan should evaluate only weather markets")
+
+    by_slug = {o["slug"]: o for o in opps}
+    for m in BIG_WEATHER:
+        assert m["slug"] in by_slug
+    assert any(by_slug[m["slug"]].get("fair_probability") is not None
+               for m in BIG_WEATHER), "weather markets must still be priced"
+    # No sports market should have been considered at all.
+    assert not [o for o in opps if o["slug"].startswith("nba-game-")]
+
+def test_weather_only_does_not_relax_any_risk_control():
+    """Scope is not a risk setting. Nothing here may drift."""
+    assert CFG["mode"] == "PAPER"
+    assert CFG["live_trading_enabled"] is False
+    assert CFG["starting_bankroll"] == 50.00
+    assert CFG["kelly_fraction"] == 0.25
+    assert CFG["max_position_pct"] == 0.06
+    assert CFG["max_total_exposure_pct"] == 0.20
+    assert CFG["max_correlated_pct"] == 0.08
+    assert CFG["min_net_edge_pp"] == 8.0
+    assert CFG["max_spread"] == 0.06
+    assert CFG["daily_loss_halt_pct"] == 0.10
+    assert CFG["max_drawdown_halt_pct"] == 0.20
+    assert CFG["evaluation_hours"] == 48
+    assert CFG["emergency_stop"] is False

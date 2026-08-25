@@ -65,7 +65,7 @@ dashboard. It takes about a minute.
 
 | When | What |
 |---|---|
-| Every ~10 min | Scan runs, marks positions, records every market considered, commits state |
+| Every ~10 min | Weather markets are re-discovered and re-evaluated, positions marked, every market considered is recorded, state committed |
 | Continuously | Dashboard rebuilds at your Pages URL |
 | At 48 hours | Final report is written, trading hard-stops, the state is committed, **and only then does the workflow disable its own schedule** |
 
@@ -87,6 +87,11 @@ https://<your-github-username>.github.io/polymarket-us-paper-agent/
   positions are open, never above it. Open positions are valued at what they
   could actually be sold for, and you always buy at the ask and sell at the bid.
   Equity above $50 with nothing resolved would mean a marking fault — tell me.
+- **Weather markets found.** The dashboard shows this count near the top, and
+  the header reads "weather markets only". A low number is expected — Polymarket
+  US lists temperature contracts for five cities. If it reads **0**, the weather
+  strategy has nothing to work with — a red banner will say so, and the discovery table lists
+  which query returned what. Send me that table.
 - **Settlement banner.** If the dashboard shows a red "SETTLEMENT NEEDS
   ATTENTION" banner, a market finished but its outcome could not be read
   automatically. The position is deliberately left open rather than closed on a
@@ -117,6 +122,11 @@ I'll fix it.
 
 It **will** trade a $50 pretend bankroll against real Polymarket US prices and
 real NOAA station data, and log every decision with its reasoning.
+
+This run is **weather-only**: it scans Polymarket US temperature contracts and
+nothing else. You will see a small number of markets per scan — that is
+correct, not a fault. The broad all-markets scan is deliberately switched off,
+since nothing outside weather is auto-traded anyway.
 
 It evaluates **both sides** of each market and will paper-trade NO as readily as
 YES. It reads the weather date from the contract text rather than from the
