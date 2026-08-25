@@ -1,0 +1,43 @@
+{
+  "scan_started_at": "2026-08-25T00:51:25.437405+00:00",
+  "mode": "PAPER",
+  "live_trading_enabled": false,
+  "audit_chain": {
+    "ok": true,
+    "records": 0,
+    "broken_at": null,
+    "detail": "chain intact"
+  },
+  "errors": [],
+  "halts": [],
+  "warnings": [],
+  "evaluation": {
+    "started": true,
+    "expired": false,
+    "elapsed_hours": 0.0,
+    "remaining_hours": 48.0,
+    "start": "2026-08-25T00:51:25.437414+00:00",
+    "end": "2026-08-27T00:51:25.437414+00:00",
+    "complete": false,
+    "runs_observed": 1
+  },
+  "marks_verified": true,
+  "settlement_alerts": [],
+  "settlement_pending": [],
+  "scan_finished_at": "2026-08-25T00:51:38.468635+00:00",
+  "markets_scanned": 4000,
+  "opportunities_considered": 4000,
+  "traded_this_scan": 0,
+  "shortlisted_for_review": 0,
+  "consecutive_errors": 0,
+  "equity": 50.0,
+  "cash": 50.0,
+  "realized_pnl": 0,
+  "unrealized_pnl": 0,
+  "drawdown_pct": 0.0,
+  "daily_pnl_pct": 0.0,
+  "open_positions": 0,
+  "halted": false,
+  "halt_reason": "",
+  "last_successful_scan": "2026-08-25T00:51:38.468776+00:00"
+}
