@@ -3,9 +3,9 @@
   "starting_bankroll": 50.0,
   "peak_bankroll": 50.0,
   "day_start_equity": 50.0,
-  "day_start_date": "2026-08-25",
+  "day_start_date": "2026-08-26",
   "halted": false,
   "halt_reason": "",
-  "updated_at": "2026-08-25T23:56:33.320511+00:00",
+  "updated_at": "2026-08-26T03:35:40.078333+00:00",
   "positions": []
 }
