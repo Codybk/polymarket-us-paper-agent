@@ -1,7 +1,7 @@
 {
   "started_at": "2026-08-25T01:50:15.000452+00:00",
-  "complete": false,
-  "completed_at": null,
+  "complete": true,
+  "completed_at": "2026-08-28T00:51:51.026448+00:00",
   "hours": 48.0,
-  "runs_observed": 21
+  "runs_observed": 22
 }

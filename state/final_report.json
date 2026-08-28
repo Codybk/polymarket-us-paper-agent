@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-08-28T00:51:51.028020+00:00",
+  "evaluation_start": "2026-08-25T01:50:15.000452+00:00",
+  "evaluation_end_expected": "2026-08-27T01:50:15.000452+00:00",
+  "evaluation_completed_at": "2026-08-28T00:51:51.026448+00:00",
+  "evaluation_complete": true,
+  "evaluation_elapsed_hours": 71.0267,
+  "evaluation_hours": 48.0,
+  "scheduled_runs_observed": 22,
+  "evaluation_state_source": "state/evaluation.json",
+  "scans_completed": 21,
+  "schedule_evidence": {
+    "first_scan": "2026-08-25T01:50:15.599260+00:00",
+    "last_scan": "2026-08-26T14:24:45.501750+00:00",
+    "distinct_scan_timestamps": 21,
+    "runs_observed_in_state": 22,
+    "window_start_persisted": "2026-08-25T01:50:15.000452+00:00"
+  },
+  "starting_bankroll": 50.0,
+  "final_equity": 50.0,
+  "capital_in_unresolved_settlements": 0,
+  "settlement_failures": [],
+  "positions_opened": 0,
+  "positions_resolved": 0,
+  "positions_still_open": 0,
+  "positions_awaiting_manual_settlement": 0,
+  "gross_pnl": 0,
+  "total_fees_and_slippage": 0,
+  "net_pnl": 0,
+  "max_drawdown_pct": 0.0,
+  "peak_bankroll": 50.0,
+  "positions_on_fallback_marks": 0,
+  "win_rate": null,
+  "calibration": [
+    {
+      "bin": "0-20%",
+      "n": 0,
+      "mean_predicted": null,
+      "actual_frequency": null
+    },
+    {
+      "bin": "20-40%",
+      "n": 0,
+      "mean_predicted": null,
+      "actual_frequency": null
+    },
+    {
+      "bin": "40-60%",
+      "n": 0,
+      "mean_predicted": null,
+      "actual_frequency": null
+    },
+    {
+      "bin": "60-80%",
+      "n": 0,
+      "mean_predicted": null,
+      "actual_frequency": null
+    },
+    {
+      "bin": "80-100%",
+      "n": 0,
+      "mean_predicted": null,
+      "actual_frequency": null
+    }
+  ],
+  "risk_halts": 0,
+  "audit_chain": {
+    "ok": true,
+    "records": 65,
+    "broken_at": null,
+    "detail": "chain intact"
+  },
+  "verdict": "NO EDGE DEMONSTRATED. Nothing resolved during the window, so there is no evidence either way. Any profit shown is unrealised marks, not results.",
+  "recommendation": "CONTINUE PAPER TRADING",
+  "caveats": [
+    "Simulated fills walked real resting order-book depth at the recorded timestamp; no midpoint pricing was used.",
+    "Unresolved positions are marked to the bid and are NOT results.",
+    "A 48-hour window concentrated in weather markets is not a representative sample of anything.",
+    "Fees and slippage are modelled from the published Polymarket US schedule and observed book depth, not from executed trades.",
+    "Positions whose settlement could not be parsed are excluded from every performance figure; their stale marks are not results.",
+    "Open positions are marked at their executable, side-aware, fee-inclusive exit value -- what they could actually be closed into, not the opposite side of the book."
+  ]
+}
